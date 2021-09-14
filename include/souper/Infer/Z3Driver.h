@@ -1,5 +1,6 @@
 #ifndef SOUPER_Z3_DRIVER_H
 #define SOUPER_Z3_DRIVER_H
+#include "llvm/ADT/StringExtras.h"
 #include "souper/Infer/Verification.h"
 #include "souper/Infer/Z3Expr.h"
 #include "souper/Inst/Inst.h"
@@ -195,7 +196,7 @@ private:
         llvm::report_fatal_error("Holes unimplemented in Z3Driver.");
       }
       case souper::Inst::Const: {
-        Put(I, ctx.bv_val(I->Val.toString(10, false).c_str(), W));
+        Put(I, ctx.bv_val(llvm::toString(I->Val, 10, false).c_str(), W));
         // inefficient?
         return true;
       }

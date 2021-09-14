@@ -161,7 +161,7 @@ private:
   }
 
   IR::Value *toValue(IR::Type &t, llvm::APInt x) {
-    auto c = std::make_unique<IR::IntConst>(t, x.toString(10, false));
+    auto c = std::make_unique<IR::IntConst>(t, toString(x, 10, false));
     auto ptr = c.get();
     F.addConstant(std::move(c));
     return ptr;
