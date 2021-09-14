@@ -493,7 +493,7 @@ public:
       IsValid = isTransformationValid(Mapping.LHS, Mapping.RHS, PCs, BPCs, IC);
       return std::error_code();
     } else if (UseZ3Driver) {
-      IsValid = isTransformationValidZ3(Mapping.LHS, Mapping.RHS, PCs, BPCs, IC);
+      IsValid = isTransformationValidZ3(Mapping.LHS, Mapping.RHS, PCs, BPCs, IC, Timeout);
       return std::error_code();
     }
     std::string Query;

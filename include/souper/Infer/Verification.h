@@ -40,6 +40,9 @@ struct RefinementProblem {
 
 };
 
+void collectPhis(souper::Inst *I,
+                 std::map<souper::Block *, std::set<souper::Inst *>> &Phis);
+
 std::unordered_set<RefinementProblem, RefinementProblem::Hash>
   explodePhis(InstContext &IC, RefinementProblem P);
 

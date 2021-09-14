@@ -3,50 +3,94 @@
 #include "souper/Infer/Verification.h"
 #include "souper/Infer/Z3Expr.h"
 #include "souper/Inst/Inst.h"
-
+#include "souper/Extractor/ExprBuilder.h"
+#include <optional>
 namespace souper {
 
 class Z3Driver {
 public:
-  Z3Driver(Inst *LHS_, Inst *PreCondition_, InstContext &IC_,
-           std::vector<Inst *> ExtraInputs = {})
-    : LHS(LHS_), Precondition(PreCondition_), IC(IC_), TranslatedExprs(ctx), Solver(ctx){
-    // TODO: Preprocessing, solver keepalive, variables in solver for reuse
+  Z3Driver(Inst *LHS_, const std::vector<InstMapping> PCs_, InstContext &IC_, BlockPCs BPCs_,
+           std::vector<Inst *> ExtraInputs = {}, unsigned Timeout = 100000)
+    : LHS(LHS_), PCs(PCs_), IC(IC_),
+      TranslatedExprs(ctx), ExtraPreds(ctx), Solver(ctx), Model(ctx) {
+
+    EB = createKLEEBuilder(IC);
+    // TODO: Preprocessing, solver keepalive
+    z3::params p(ctx);
+
+    Z3_global_param_set("timeout", "1000");
+    p.set(":logic", "QF_BV");
+
+
+// Following list is used by alive2
+//    "simplify",
+//    "propagate-values",
+//    "simplify",
+//    "elim-uncnstr",
+//    "qe-light",
+//    "simplify",
+//    "elim-uncnstr",
+//    "reduce-args",
+//    "qe-light",
+//    "simplify",
+//    "smt"
+
+    Solver = (z3::tactic(ctx, "simplify") &
+              z3::tactic(ctx, "propagate-values") &
+              z3::tactic(ctx, "simplify") &
+              z3::tactic(ctx, "elim-uncnstr") &
+              z3::tactic(ctx, "qe-light") &
+              z3::tactic(ctx, "simplify") &
+              z3::tactic(ctx, "elim-uncnstr") &
+              z3::tactic(ctx, "reduce-args") &
+              z3::tactic(ctx, "qe-light") &
+              z3::tactic(ctx, "bit-blast") &
+              z3::tactic(ctx, "smt")).mk_solver();
+    // Hangs for 1-2% of the problems without adding bit blast.
+    // OTOH adding bit blast makes it not much faster than the klee backend.
+    // TODO: Investigate if it makes sense to add this option for some specific problems.
+
+    Solver.set(p);
 
     InstNumbers = 201;
     //201 is chosen arbitrarily.
-
-    Translate(LHS);
-    if (Precondition) AddConstraint(Precondition);
   }
-  bool verify(Inst *RHS, Inst *RHSAssumptions = nullptr) {
-    Translate(RHS);
-    if (RHSAssumptions) AddConstraint(RHSAssumptions);
 
-    if (LHS->DemandedBits != 0) {
-      auto Mask = ctx.bv_val(LHS->DemandedBits.toString(10, false).c_str(), LHS->Width);
-      Put(LHS, Get(LHS) & Mask);
-      Put(RHS, Get(RHS) & Mask);
-    }
-    Solver.add(Get(LHS) != Get(RHS));
+  // True result means unsat, false means sat
+  // TODO: handle unknown
+  bool verify(Inst *RHS, Inst *RHSAssumptions = nullptr, bool Invert = false);
 
-    if (Solver.check() == z3::unsat) {
-      return true;
+  std::optional<llvm::APInt> getModelVal(Inst *I) {
+    auto Expr = Model.eval(Get(I));
+    if (Expr.is_numeral()) {
+      return llvm::APInt(Expr.get_sort().bv_size(), Expr.get_decimal_string(0), 10);
     } else {
-      // TODO: Model
-      return false;
+      return {};
     }
-
   }
+
 private:
   Inst *LHS;
-  Inst *Precondition;
+  Inst *Precondition = nullptr;
   InstContext &IC;
+  const std::vector<InstMapping> PCs;
+  std::map<Block *, std::map<unsigned, std::vector<InstMapping>>> BPCMap;
+  BlockPCs BPCs;
   std::map<const Inst *, std::string> NamesCache;
   std::map<Inst *, size_t> ExprCache;
   z3::context ctx;
   z3::expr_vector TranslatedExprs;
+  z3::expr_vector ExtraPreds;
   z3::solver Solver;
+  z3::model Model;
+
+  std::unique_ptr<ExprBuilder> EB;
+
+  struct SolverPushRAII {
+    SolverPushRAII(z3::solver &S_) : S(S_) {S.push();}
+    ~SolverPushRAII() {S.pop();}
+    z3::solver &S;
+  };
 
   bool isCached(Inst *I) {
     return ExprCache.find(I) != ExprCache.end();
@@ -65,67 +109,40 @@ private:
     Solver.add(Get(I) == ctx.bv_val(1, 1));
   }
 
-  int InstNumbers;
-
-  void addExtraPreds(souper::Inst *I) {
-    if (I->K == Inst::Kind::UDiv || I->K == Inst::Kind::SDiv
-        || I->K == Inst::Kind::SDivExact || I->K == Inst::Kind::UDivExact
-        || I->K == Inst::Kind::URem || I->K == Inst::Kind::SRem) {
-      Solver.add(Get(I->Ops[1]) != ctx.bv_val(0, I->Width));
+  z3::expr getPhiArgConstraint(Block *B, unsigned idx) {
+    souper::Inst *Cond = nullptr;
+    for (auto Mapping : BPCMap[B][idx]) {
+      auto Cur = IC.getInst(Inst::Kind::Eq, 1, {Mapping.LHS, Mapping.RHS});
+      if (!Cond) {
+        Cond = Cur;
+      } else {
+        Cond = IC.getInst(Inst::Kind::And, 1, {Cond, Cur});
+      }
     }
 
-    if (I->K == Inst::Kind::Shl || I->K == Inst::Kind::LShr
-        || I->K == Inst::Kind::AShr || I->K == Inst::Kind::AShrExact
-        || I->K == Inst::Kind::LShrExact) {
-      Solver.add(z3::ult(Get(I->Ops[1]), ctx.bv_val(I->Width, I->Width)));
+    if (!Cond) {
+      return ctx.bool_val(true);
     }
 
-    if (I->K == Inst::Kind::AddNSW || I->K == Inst::Kind::AddNW) {
-      Solver.add(z3expr::add_no_soverflow(Get(I->Ops[0]), Get(I->Ops[1])));
+    Translate(Cond);
+    auto Expr = Get(Cond);
+    if (Expr.get_sort().is_bv()) {
+      // i1 to bool. TODO: investigate if there is a more efficient way of doing this.
+      auto &ctx = Expr.ctx();
+      Expr = z3::ite(Expr == ctx.bv_val(1, 1), ctx.bool_val(true), ctx.bool_val(false));
+      Put(Cond, Expr);
     }
-
-    if (I->K == Inst::Kind::AddNUW || I->K == Inst::Kind::AddNW) {
-      Solver.add(z3expr::add_no_uoverflow(Get(I->Ops[0]), Get(I->Ops[1])));
-    }
-
-    if (I->K == Inst::Kind::SubNSW || I->K == Inst::Kind::SubNW) {
-      Solver.add(z3expr::sub_no_soverflow(Get(I->Ops[0]), Get(I->Ops[1])));
-    }
-    if (I->K == Inst::Kind::SubNUW || I->K == Inst::Kind::SubNW) {
-      Solver.add(z3expr::sub_no_uoverflow(Get(I->Ops[0]), Get(I->Ops[1])));
-    }
-
-    if (I->K == Inst::Kind::MulNSW || I->K == Inst::Kind::MulNW) {
-      Solver.add(z3expr::mul_no_soverflow(Get(I->Ops[0]), Get(I->Ops[1])));
-    }
-    if (I->K == Inst::Kind::MulNUW || I->K == Inst::Kind::MulNW) {
-      Solver.add(z3expr::mul_no_uoverflow(Get(I->Ops[0]), Get(I->Ops[1])));
-    }
-
-    if (I->K == Inst::Kind::ShlNSW || I->K == Inst::Kind::ShlNW) {
-      Solver.add(z3expr::shl_no_soverflow(Get(I->Ops[0]), Get(I->Ops[1])));
-    }
-    if (I->K == Inst::Kind::ShlNUW || I->K == Inst::Kind::ShlNW) {
-      Solver.add(z3expr::shl_no_uoverflow(Get(I->Ops[0]), Get(I->Ops[1])));
-    }
-
-    if (I->K == Inst::Kind::UDivExact) {
-      Solver.add(z3expr::udiv_exact(Get(I->Ops[0]), Get(I->Ops[1])));
-    }
-    if (I->K == Inst::Kind::SDivExact) {
-      Solver.add(z3expr::sdiv_exact(Get(I->Ops[0]), Get(I->Ops[1])));
-    }
-
-    if (I->K == Inst::Kind::AShrExact) {
-      Solver.add(z3expr::ashr_exact(Get(I->Ops[0]), Get(I->Ops[1])));
-    }
-    if (I->K == Inst::Kind::LShrExact) {
-      Solver.add(z3expr::lshr_exact(Get(I->Ops[0]), Get(I->Ops[1])));
-    }
+    return Expr;
   }
 
+  int InstNumbers;
+
+  void genExtraPreds(souper::Inst *I);
+
   bool Translate(souper::Inst *I) {
-    if (!I) return true;
+    if (!I) {
+      return false;
+    }
     // unused translation; this is souper's internal instruction to represent overflow instructions
     if (souper::Inst::isOverflowIntrinsicSub(I->K)) {
       return true;
@@ -147,11 +164,9 @@ private:
       if (I->K == Inst::ExtractValue) {
         break; // Break after translating main arg, idx is handled separately.
       }
-
     }
 
-    std::string Name = "";
-
+    std::string Name;
     if (NamesCache.find(I) != NamesCache.end()) {
       Name = NamesCache[I];
     } else if (I->Name != "") {
@@ -163,17 +178,17 @@ private:
     } else {
       Name = "%" + std::to_string(InstNumbers++);
     }
-    if (I->K == Inst::Var) {
-      NamesCache[I] = Name;
-    }
+    NamesCache[I] = Name;
 
     auto W = I->Width;
-    addExtraPreds(I);
+    genExtraPreds(I);
     switch (I->K) {
       case souper::Inst::Var: {
         Put(I, ctx.bv_const(Name.c_str(), W));
         auto DFC = getDataflowConditions(I, IC);
-        if (DFC) AddConstraint(DFC);
+        if (DFC) {
+          AddConstraint(DFC);
+        }
         return true;
       }
       case souper::Inst::Hole: {
@@ -186,11 +201,14 @@ private:
       }
 
       case souper::Inst::Phi: {
-        if (Ops.size() != 1) {
-          assert(false && "Phi with muliple arguments unimplemented");
-          return false;
+        auto Var = ctx.bv_const(Name.c_str(), I->Width);
+        auto Constraint = ((Var == Get(I->Ops[0])) && getPhiArgConstraint(I->B, 0));
+        for (size_t i = 0; i < I->Ops.size(); ++i) {
+          Constraint = Constraint ||
+              ((Var == Get(I->Ops[i])) && getPhiArgConstraint(I->B, i));
         }
-        Put(I, Get(Ops[0]));
+        Solver.add(Constraint);
+        Put(I, Var);
         return true;
       }
 
@@ -247,9 +265,9 @@ private:
 
 
 bool isTransformationValidZ3(souper::Inst *LHS, souper::Inst *RHS,
-                           const std::vector<InstMapping> &PCs,
-                           const souper::BlockPCs &BPCs,
-                           InstContext &IC);
+                             const std::vector<InstMapping> &PCs,
+                             const souper::BlockPCs &BPCs,
+                             InstContext &IC, unsigned Timeout = 10000);
 
 }
 
