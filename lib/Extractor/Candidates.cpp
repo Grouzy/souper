@@ -957,8 +957,8 @@ void ExtractExprCandidates(Function &F, const LoopInfo *LI, DemandedBits *DB,
     std::unique_ptr<BlockCandidateSet> BCS(new BlockCandidateSet);
     for (auto &I : BB) {
       // SATURN filter candidates
-      if (Opts.CandidateFilterInstruction &&
-          Opts.CandidateFilterInstruction != &I)
+      if (Opts.CandidateFilterInstructions &&
+          Opts.CandidateFilterInstructions->contains(&I) == false)
         continue;
       if (isa<ReturnInst>(I))
         PrintDataflowInfo(F, I, LVI, SE);

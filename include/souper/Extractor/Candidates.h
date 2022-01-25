@@ -81,9 +81,10 @@ struct ExprBuilderOptions {
   bool NamedArrays;
 
   // SATURN
-  llvm::Value *CandidateFilterInstruction;
+  llvm::SmallPtrSet<llvm::Value *, 32> *CandidateFilterInstructions = nullptr;
 
-  ExprBuilderOptions() : NamedArrays(false), CandidateFilterInstruction(nullptr) {}
+  ExprBuilderOptions()
+      : NamedArrays(false), CandidateFilterInstructions(nullptr) {}
 };
 
 struct BlockInfo {
