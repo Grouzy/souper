@@ -1,6 +1,7 @@
 #include "souper/Infer/Z3Driver.h"
 #include "souper/Infer/Z3Expr.h"
 
+#include <iostream>
 
 extern unsigned DebugLevel;
 
