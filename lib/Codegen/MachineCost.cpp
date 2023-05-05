@@ -130,7 +130,7 @@ void getBackendCost(InstContext &IC, souper::Inst *I, BackendCost &BC) {
 
     auto Features = "";
     TargetOptions Opt;
-    auto RM = Optional<Reloc::Model>();
+    auto RM = std::optional<Reloc::Model>();
     auto TM = Target->createTargetMachine(T.Trip, T.CPU, Features, Opt, RM);
 
     Cost.C.push_back(getCodeSize(M, TM));
