@@ -91,9 +91,10 @@ struct TargetInfo {
   std::string Trip, CPU;
 };
 
+//idk about anything other than x86
 std::vector<TargetInfo> Targets {
   { "x86_64", "skylake" },
-  { "aarch64", "apple-a12" },
+  //{ "aarch64", "apple-a12" },
 };
 
 bool Init = false;
@@ -102,11 +103,11 @@ void getBackendCost(InstContext &IC, souper::Inst *I, BackendCost &BC) {
   // TODO is this better than just forcing all clients of this code to
   // do the init themselves?
   if (!Init) {
-    InitializeAllTargetInfos();
-    InitializeAllTargets();
-    InitializeAllTargetMCs();
-    InitializeAllAsmParsers();
-    InitializeAllAsmPrinters();
+    LLVMInitializeX86TargetInfo();
+    LLVMInitializeX86Target();
+    LLVMInitializeX86TargetMC();
+    LLVMInitializeX86AsmParser();
+    LLVMInitializeX86AsmPrinter();
     Init = true;
   }
 

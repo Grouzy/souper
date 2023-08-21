@@ -8,78 +8,43 @@ if(NOT CMAKE_BUILD_TYPE)
       "Choose the type of build, options are: Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
 
+find_package(LLVM CONFIG REQUIRED)
+llvm_map_components_to_libnames(LLVM_LIBS analysis core support passes X86)
+
+find_package(Clang CONFIG REQUIRED)
+link_libraries(clangCodeGen clangTooling clangRewrite clangFrontend clangAnalysis clangParse clangSerialization )
+
+message("llvm libs: ${LLVM_LIBS}")
+message("llvm directory: ${LLVM_DIR}")
+message("llvm includes: ${LLVM_INCLUDE_DIRS}")
+
 if (NOT LLVM_BUILD_TYPE)
   set(LLVM_BUILD_TYPE ${CMAKE_BUILD_TYPE})
 endif()
-set(LLVM_CONFIG_EXECUTABLE ${TOB_FOLDER}/llvm/bin/llvm-config)
-if(NOT EXISTS ${LLVM_CONFIG_EXECUTABLE})
-  message(FATAL_ERROR "llvm-config could not be found!")
-endif()
-
-execute_process(
-  COMMAND ${LLVM_CONFIG_EXECUTABLE} --includedir
-  OUTPUT_VARIABLE LLVM_INCLUDEDIR
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-execute_process(
-  COMMAND ${LLVM_CONFIG_EXECUTABLE} --cppflags
-  OUTPUT_VARIABLE LLVM_CXXFLAGS
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
 
 set(LLVM_CXXFLAGS "${LLVM_CXXFLAGS} -fno-exceptions -fno-rtti -Wno-deprecated-enum-enum-conversion")
 
-execute_process(
-  COMMAND ${LLVM_CONFIG_EXECUTABLE} --libs
-  OUTPUT_VARIABLE LLVM_LIBS
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
+if(NOT ${LLVM_SYSTEM_LIBS} STREQUAL "")
+  set(LLVM_LIBS "${LLVM_LIBS} ${LLVM_SYSTEM_LIBS}")
+endif()
 
-execute_process(
-  COMMAND ${LLVM_CONFIG_EXECUTABLE} --system-libs
-  OUTPUT_VARIABLE LLVM_SYSTEM_LIBS
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-set(LLVM_LIBS "${LLVM_LIBS} ${LLVM_SYSTEM_LIBS}")
-string(STRIP ${LLVM_LIBS} LLVM_LIBS)
-
-execute_process(
-  COMMAND ${LLVM_CONFIG_EXECUTABLE} --ldflags
-  OUTPUT_VARIABLE LLVM_LDFLAGS
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
+message("used llvm libs: ${LLVM_LIBS}")
 
 set(PASS_LDFLAGS "${LLVM_LDFLAGS}")
-
-execute_process(
-  COMMAND ${LLVM_CONFIG_EXECUTABLE} --bindir
-  OUTPUT_VARIABLE LLVM_BINDIR
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-execute_process(
-  COMMAND ${LLVM_CONFIG_EXECUTABLE} --src-root
-  OUTPUT_VARIABLE LLVM_SRC
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-execute_process(
-  COMMAND ${LLVM_CONFIG_EXECUTABLE} --obj-root
-  OUTPUT_VARIABLE LLVM_BUILD
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
 
 set(CLANG_CXXFLAGS "")
 set(CLANG_INCLUDEDIR "${LLVM_SRC}/../clang/include" "${LLVM_BUILD}/tools/clang/include")
 
-set(ALIVE_SRCDIR "${ALIVE2_FOLDER}/include")
-set(ALIVE_BUILDDIR "${ALIVE2_FOLDER}/lib")
-include_directories("${ALIVE2_FOLDER}/")
-include_directories("${ALIVE_SRCDIR}")
-include_directories("${ALIVE_SRCDIR}/alive2")
+set(ALIVE2_FOLDER "${CMAKE_CURRENT_SOURCE_DIR}/third_party/alive2")
+message("ALIVE2 folder: ${ALIVE2_FOLDER}")
 
-set(CLANG_LIBS "-lclangCodeGen -lclangTooling -lclangRewrite -lclangFrontend -lclangAnalysis -lclangParse -lclangSerialization -lclangSema -lclangEdit -lclangAnalysis -lclangAST -lclangDriver -lclangLex -lclangBasic -lclangASTMatchers")
+set(ALIVE_BUILDDIR "${ALIVE2_FOLDER}/build")
+include_directories("${ALIVE2_FOLDER}")
+include_directories("${ALIVE2_FOLDER}/..")
+
+if(NOT EXISTS ${ALIVE2_FOLDER})
+  message(FATAL_ERROR "couldn't find ALIVE_SRCDIR")
+endif()
 
 #set(GTEST_CXXFLAGS "-DGTEST_HAS_RTTI=0")
 #set(GTEST_INCLUDEDIR "${LLVM_SRC}/utils/unittest/googletest/include")
@@ -93,8 +58,14 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   set(PASS_LDFLAGS "-Wl,-undefined,dynamic_lookup")
 endif()
 
+set(KLEE_FOLDER "${CMAKE_CURRENT_SOURCE_DIR}/third_party/klee")
+
 include_directories(include ${KLEE_FOLDER}/include)
 include_directories(include "${CMAKE_BINARY_DIR}/include")
+
+set(ENABLE_Z3 1)
+configure_file(${KLEE_FOLDER}/include/klee/Config/config.h.cmin
+  ${KLEE_FOLDER}/include/klee/Config/config.h)
 
 set(KLEE_EXPR_FILES
   ${KLEE_FOLDER}/lib/Expr/Constraints.cpp
@@ -108,6 +79,8 @@ set(KLEE_EXPR_FILES
   ${KLEE_FOLDER}/lib/Expr/Lexer.cpp
   ${KLEE_FOLDER}/lib/Expr/Parser.cpp
   ${KLEE_FOLDER}/lib/Expr/Updates.cpp
+  ${KLEE_FOLDER}/lib/Expr/ArrayCache.cpp
+  ${KLEE_FOLDER}/lib/Solver/SolverCmdLine.cpp
 )
 
 add_library(kleeExpr STATIC
@@ -116,19 +89,23 @@ add_library(kleeExpr STATIC
 
 find_path(HIREDIS_INCLUDE_DIR
   NAMES
-  hiredis/hiredis.h
+  hiredis.h
   PATHS
-  ${DEPENDENCIES_FOLDER}/hiredis/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/hiredis/build/include/hiredis
   NO_DEFAULT_PATH)
 
-include_directories(${HIREDIS_INCLUDE_DIR}/hiredis)
+message("found hiredis includes: ${HIREDIS_INCLUDE_DIR}")
+
+include_directories(${HIREDIS_INCLUDE_DIR})
 
 find_library(HIREDIS_LIBRARY
   NAMES
   hiredis
   PATHS
-  ${DEPENDENCIES_FOLDER}/hiredis/lib
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/hiredis/build/lib
   NO_DEFAULT_PATH)
+
+message("found hiredis lib: ${HIREDIS_LIBRARY}")
 
 find_library(ALIVE_IR ir PATHS "${ALIVE_BUILDDIR}" NO_DEFAULT_PATH)
 if (ALIVE_IR)
@@ -162,12 +139,14 @@ set(Z3 "${TOB_FOLDER}/z3/bin/z3")
 set(Z3_INCLUDE_DIR "${TOB_FOLDER}/z3/include")
 include_directories(${Z3_INCLUDE_DIR})
 
-find_library(Z3_LIBRARY z3 PATHS "${TOB_FOLDER}/z3/bin" NO_DEFAULT_PATH)
-if (Z3_LIBRARY)
-  message(STATUS "Z3 shared lib: ${Z3_LIBRARY}")
+find_package(Z3 REQUIRED)
+if (Z3_LIBRARIES)
+  message(STATUS "Z3 shared lib: ${Z3_LIBRARIES}")
 else()  
   message(SEND_ERROR "Z3 shared lib not found")
 endif()
+
+set(Z3_LIBRARY ${Z3_LIBRARIES})
 
 set(ALIVE_LIBRARY ${ALIVE_IR} ${ALIVE_SMT} ${ALIVE_TOOLS} ${ALIVE_UTIL} ${Z3_LIBRARY})
 
@@ -413,11 +392,11 @@ foreach(target souper internal-solver-test lexer-test parser-test souper-check c
                souperSMTLIB2 souperTool souperPass souperPassStatic souperPassProfileAll kleeExpr
                souperCodegen souperCodegenStatic)
   set_target_properties(${target} PROPERTIES COMPILE_FLAGS "${LLVM_CXXFLAGS}")
-  target_include_directories(${target} PRIVATE "${LLVM_INCLUDEDIR}")
+  target_include_directories(${target} PRIVATE "${LLVM_INCLUDE_DIRS}")
 endforeach()
 foreach(target souperClangTool clang-souper)
   set_target_properties(${target} PROPERTIES COMPILE_FLAGS "${CLANG_CXXFLAGS} ${LLVM_CXXFLAGS}")
-  target_include_directories(${target} PRIVATE "${LLVM_INCLUDEDIR}" ${CLANG_INCLUDEDIR})
+  target_include_directories(${target} PRIVATE "${LLVM_INCLUDE_DIRS}" ${CLANG_INCLUDEDIR})
 endforeach()
 #foreach(target     bulk_tests )
 #  set_target_properties(${target} PROPERTIES COMPILE_FLAGS "${GTEST_CXXFLAGS} ${LLVM_CXXFLAGS}")
