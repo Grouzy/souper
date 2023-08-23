@@ -18,4 +18,4 @@ if [ -z "$LIT_ARGS" ]; then
   LIT_ARGS="-vs"
 fi
 
-${LLVM_BINDIR}/llvm-lit $LIT_ARGS ${CMAKE_BINARY_DIR}/test/$1
+${LLVM_TOOLS_BINARY_DIR}/llvm-lit $LIT_ARGS ${CMAKE_BINARY_DIR}/test/$1
