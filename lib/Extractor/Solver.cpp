@@ -174,7 +174,7 @@ public:
                                    InstContext &IC) override {
     unsigned W = LHS->Width;
 
-    if (!LHS->DemandedBits.isAllOnesValue()) {
+    if (!LHS->DemandedBits.isAllOnes()) {
       LHS = IC.getInst(Inst::And, W, {LHS, IC.getConst(LHS->DemandedBits)});
     }
 

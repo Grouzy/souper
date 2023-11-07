@@ -344,7 +344,7 @@ namespace souper {
         return llvm::ConstantRange(LHS.getBitWidth(), /*isFullSet=*/false);
 
       APInt umin = APIntOps::umin(RHS.getUnsignedMax(), LHS.getUnsignedMax());
-      if (umin.isAllOnesValue())
+      if (umin.isAllOnes())
         return llvm::ConstantRange(LHS.getBitWidth(), /*isFullSet=*/true);
 
       APInt res = APInt::getNullValue(LHS.getBitWidth());

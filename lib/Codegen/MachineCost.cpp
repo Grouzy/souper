@@ -103,11 +103,11 @@ void getBackendCost(InstContext &IC, souper::Inst *I, BackendCost &BC) {
   // TODO is this better than just forcing all clients of this code to
   // do the init themselves?
   if (!Init) {
-    LLVMInitializeX86TargetInfo();
-    LLVMInitializeX86Target();
-    LLVMInitializeX86TargetMC();
-    LLVMInitializeX86AsmParser();
-    LLVMInitializeX86AsmPrinter();
+    InitializeAllTargetInfos();
+    InitializeAllTargets();
+    InitializeAllTargetMCs();
+    InitializeAllAsmParsers();
+    InitializeAllAsmPrinters();
     Init = true;
   }
 

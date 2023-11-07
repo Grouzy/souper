@@ -547,7 +547,7 @@ void Inst::Profile(llvm::FoldingSetNodeID &ID) const {
     ID.AddPointer(B);
     break;
   default:
-    if (!DemandedBits.isAllOnesValue())
+    if (!DemandedBits.isAllOnes())
       ID.Add(DemandedBits);
     if (HarvestKind == HarvestType::HarvestedFromUse) {
       ID.Add(HarvestFrom);
@@ -697,7 +697,7 @@ Inst *InstContext::getPhi(Block *B, const std::vector<Inst *> &Ops, llvm::APInt 
   ID.AddPointer(B);
   for (auto O : Ops)
     ID.AddPointer(O);
-  if (!DemandedBits.isAllOnesValue())
+  if (!DemandedBits.isAllOnes())
     ID.Add(DemandedBits);
 
   void *IP = 0;
@@ -743,7 +743,7 @@ Inst *InstContext::getInst(Inst::Kind K, unsigned Width,
   ID.AddInteger(Width);
   for (auto O : *InstOps)
     ID.AddPointer(O);
-  if (!DemandedBits.isAllOnesValue())
+  if (!DemandedBits.isAllOnes())
     ID.Add(DemandedBits);
 
   void *IP = 0;
@@ -1012,7 +1012,7 @@ void souper::PrintReplacement(llvm::raw_ostream &Out,
   std::string SRef = Context.printInst(Mapping.LHS, Out, printNames);
   std::string RRef = Context.printInst(Mapping.RHS, Out, printNames);
   Out << "cand " << SRef << " " << RRef;
-  if (!Mapping.LHS->DemandedBits.isAllOnesValue()) {
+  if (!Mapping.LHS->DemandedBits.isAllOnes()) {
     Out<< " (" << "demandedBits="
        << Inst::getDemandedBitsString(Mapping.LHS->DemandedBits)
        << ")";
@@ -1045,7 +1045,7 @@ void souper::PrintReplacementLHS(llvm::raw_ostream &Out,
   std::string SRef = Context.printInst(LHS, Out, printNames);
 
   Out << "infer " << SRef;
-  if (!LHS->DemandedBits.isAllOnesValue()) {
+  if (!LHS->DemandedBits.isAllOnes()) {
     Out<< " (" << "demandedBits="
        << Inst::getDemandedBitsString(LHS->DemandedBits)
        << ")";

@@ -230,7 +230,7 @@ namespace souper {
 
     case Inst::SDivExact:
       if (ARG1 == 0 ||
-          (ARG0.isMinSignedValue() && ARG1.isAllOnesValue()))
+          (ARG0.isMinSignedValue() && ARG1.isAllOnes()))
         return EvalValue::ub();
       if ((ARG0.sdiv(ARG1) * ARG1) != ARG0)
         return EvalValue::poison(ARG0.getBitWidth());
@@ -247,7 +247,7 @@ namespace souper {
 
     case Inst::SRem:
       if (ARG1 == 0 ||
-          (ARG0.isMinSignedValue() && ARG1.isAllOnesValue()))
+          (ARG0.isMinSignedValue() && ARG1.isAllOnes()))
         return EvalValue::ub();
       return {ARG0.srem(ARG1)};
 

@@ -9,10 +9,24 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 find_package(LLVM CONFIG REQUIRED)
-llvm_map_components_to_libnames(LLVM_LIBS analysis core support passes X86)
+
+if(LLVM_LINK_LLVM_DYLIB)
+  set(LLVM_LIBS LLVM)
+else()
+  llvm_map_components_to_libnames(LLVM_LIBS analysis core support passes asmparser)
+endif()
+
+foreach(target ${LLVM_TARGETS_TO_BUILD})
+  message("found target ${target}")
+  list(APPEND LLVM_LIBS "LLVM${target}CodeGen")
+
+  if(LLVM${target}AsmParser IN_LIST LLVM_AVAILABLE_LIBS)
+    list(APPEND LLVM_LIBS "LLVM${target}AsmParser")
+  endif()
+endforeach()
 
 find_package(Clang CONFIG REQUIRED)
-link_libraries(clangCodeGen clangTooling clangRewrite clangFrontend clangAnalysis clangParse clangSerialization )
+link_libraries(clangCodeGen clangTooling clangRewrite clangFrontend clangAnalysis clangParse clangSerialization)
 
 find_package(GTest CONFIG REQUIRED)
 

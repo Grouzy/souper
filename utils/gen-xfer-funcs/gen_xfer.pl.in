@@ -135,7 +135,7 @@ my @unary_preds = (
     ".isNegative()",
     ".isNonNegative()",
     ".isStrictlyPositive()",
-    ".isAllOnesValue()",
+    ".isAllOnes()",
     ".isNullValue()",
     ".isOneValue()",
     ".isMaxSignedValue()",
